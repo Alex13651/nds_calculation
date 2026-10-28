@@ -94,7 +94,7 @@
 <body>
 <div class="wrap">
   <h1>Калькулятор НДС по странам мира</h1>
-  <p class="sub">Введите страну (можно синоним или сокращение) и, при желании, сумму для расчёта.</p>
+  <p class="sub">Введите страну (можно синоним или сокращение) и, при желании, сумму для расчёта. Или выберите страну на карте.</p>
 
   <div class="card">
     <form method="get" autocomplete="off">
@@ -173,8 +173,9 @@
 
   <div class="card">
     <h2>Карта мира: ставка НДС</h2>
-    <p class="sub" style="margin:0 0 14px;">Наведите на страну, чтобы увидеть точную ставку.</p>
-    <div id="vatMap"></div>
+    <p class="sub" style="margin:0 0 14px;">Наведите на страну, чтобы увидеть ставку. Кликните по стране, чтобы рассчитать.</p>
+    <!-- Передаем выбранную страну в data-атрибут -->
+    <div id="vatMap" data-selected="{% if result %}{{ result.ru }}{% endif %}"></div>
   </div>
 
   <div class="card">
@@ -224,72 +225,81 @@
   const fmt = v => Number(v).toLocaleString('ru-RU', {maximumFractionDigits: 2});
 
   async function drawCompare(amount) {
-    const res = await fetch(`/api/compare/?amount=${encodeURIComponent(amount)}`);
-    const json = await res.json();
-    document.getElementById('cmp-amount').textContent = fmt(json.amount);
+    try {
+      const res = await fetch(`/api/compare/?amount=${encodeURIComponent(amount)}`);
+      const json = await res.json();
+      document.getElementById('cmp-amount').textContent = fmt(json.amount);
 
-    const labels = json.items.map(i => i.country);
-    const nets   = json.items.map(i => i.net);
-    const vats   = json.items.map(i => i.vat);
+      const labels = json.items.map(i => i.country);
+      const nets   = json.items.map(i => i.net);
+      const vats   = json.items.map(i => i.vat);
 
-    new Chart(document.getElementById('compareChart'), {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [
-          { label: 'Без НДС', data: nets, backgroundColor: '#93c5fd' },
-          { label: 'НДС',     data: vats, backgroundColor: '#2563eb' },
-        ],
-      },
-      options: {
-        indexAxis: 'y', responsive: true,
-        scales: { x: { stacked: true, ticks: { callback: fmt } }, y: { stacked: true } },
-        plugins: {
-          legend: { position: 'bottom' },
-          tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmt(c.parsed.x)}` } },
+      new Chart(document.getElementById('compareChart'), {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Без НДС', data: nets, backgroundColor: '#93c5fd' },
+            { label: 'НДС',     data: vats, backgroundColor: '#2563eb' },
+          ],
         },
-      },
-    });
+        options: {
+          indexAxis: 'y', responsive: true,
+          scales: { x: { stacked: true, ticks: { callback: fmt } }, y: { stacked: true } },
+          plugins: {
+            legend: { position: 'bottom' },
+            tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmt(c.parsed.x)}` } },
+          },
+        },
+      });
+    } catch(e) { console.error("Ошибка графика сравнения:", e); }
   }
 
   async function drawDistribution() {
-    const res = await fetch('/api/distribution/');
-    const json = await res.json();
-    new Chart(document.getElementById('distChart'), {
-      type: 'bar',
-      data: { labels: json.labels, datasets: [{ label: 'Стран', data: json.values, backgroundColor: '#2563eb' }] },
-      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
-    });
+    try {
+      const res = await fetch('/api/distribution/');
+      const json = await res.json();
+      new Chart(document.getElementById('distChart'), {
+        type: 'bar',
+        data: { labels: json.labels, datasets: [{ label: 'Стран', data: json.values, backgroundColor: '#2563eb' }] },
+        options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
+      });
+    } catch(e) { console.error("Ошибка графика распределения:", e); }
   }
 
   async function drawTop() {
-    const res = await fetch('/api/compare/?amount=1000&countries=' +
-      encodeURIComponent('Венгрия,Дания,Швеция,Хорватия,Финляндия,Швейцария,Андорра,ОАЭ,Сингапур,Тайвань'));
-    const json = await res.json();
-    const sorted = json.items.slice().sort((a, b) => a.rate - b.rate);
+    try {
+      const res = await fetch('/api/compare/?amount=1000&countries=' +
+        encodeURIComponent('Венгрия,Дания,Швеция,Хорватия,Финляндия,Швейцария,Андорра,ОАЭ,Сингапур,Тайвань'));
+      const json = await res.json();
+      const sorted = json.items.slice().sort((a, b) => a.rate - b.rate);
 
-    new Chart(document.getElementById('topChart'), {
-      type: 'bar',
-      data: {
-        labels: sorted.map(i => `${i.country} (${i.rate}%)`),
-        datasets: [{
-          label: 'Итоговая цена для 1000 без НДС',
-          data: sorted.map(i => i.gross),
-          backgroundColor: sorted.map(i => i.rate >= 25 ? '#dc2626' : i.rate >= 20 ? '#f59e0b' : '#10b981'),
-        }],
-      },
-      options: {
-        indexAxis: 'y',
-        plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => fmt(c.parsed.x) } } },
-        scales: { x: { ticks: { callback: fmt } } },
-      },
-    });
+      new Chart(document.getElementById('topChart'), {
+        type: 'bar',
+        data: {
+          labels: sorted.map(i => `${i.country} (${i.rate}%)`),
+          datasets: [{
+            label: 'Итоговая цена для 1000 без НДС',
+            data: sorted.map(i => i.gross),
+            backgroundColor: sorted.map(i => i.rate >= 25 ? '#dc2626' : i.rate >= 20 ? '#f59e0b' : '#10b981'),
+          }],
+        },
+        options: {
+          indexAxis: 'y',
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => fmt(c.parsed.x) } } },
+          scales: { x: { ticks: { callback: fmt } } },
+        },
+      });
+    } catch(e) { console.error("Ошибка графика Топ-5:", e); }
   }
 
   async function drawMap() {
     try {
       const res = await fetch('/api/map_data/');
       const data = await res.json();
+      
+      const mapDiv = document.getElementById('vatMap');
+      const selectedCountry = mapDiv.dataset.selected;
 
       const trace = {
         type: 'choropleth',
@@ -297,23 +307,72 @@
         z: data.map(d => d.rate),
         text: data.map(d => d.country),
         colorscale: [[0, '#e0f2fe'], [0.5, '#60a5fa'], [1, '#1e3a8a']],
-        colorbar: { title: 'Ставка, %', thickness: 15, len: 0.7 },
+        colorbar: { title: 'Ставка, %', thickness: 15, len: 0.7, x: 1 },
         hovertemplate: '<b>%{text}</b><br>Ставка НДС: %{z}%<extra></extra>',
         marker: { line: { color: '#fff', width: 0.5 } }
       };
 
+      let traces = [trace];
+      
+      // Подсветка выбранной страны
+      if (selectedCountry) {
+        const selectedData = data.find(d => d.country === selectedCountry);
+        if (selectedData) {
+          const highlightTrace = {
+            type: 'choropleth',
+            locations: [selectedData.iso],
+            z: [selectedData.rate],
+            text: [selectedData.country],
+            colorscale: [[0, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0)']],
+            showscale: false,
+            hoverinfo: 'skip',
+            marker: { line: { color: '#2563eb', width: 3 } }
+          };
+          traces.push(highlightTrace);
+        }
+      }
+
       const layout = {
-        geo: { projection: { type: 'natural earth' }, showframe: false, showcoastlines: true,
-               landcolor: '#f1f5f9', showcountries: true, countrycolor: '#cbd5e1' },
-        margin: { l: 0, r: 0, t: 0, b: 0 },
-        paper_bgcolor: 'transparent', plot_bgcolor: 'transparent'
+        geo: { 
+          projection: { type: 'natural earth' }, 
+          showframe: false, 
+          showcoastlines: true,
+          landcolor: '#f1f5f9', 
+          showcountries: true, 
+          countrycolor: '#cbd5e1' 
+        },
+        margin: { l: 0, r: 0, t: 0, b: 0 }, // Убираем пустые поля
+        paper_bgcolor: 'transparent', 
+        plot_bgcolor: 'transparent'
       };
 
-      Plotly.newPlot('vatMap', [trace], layout, { responsive: true, displayModeBar: false });
+      // Рисуем карту
+      Plotly.newPlot('vatMap', traces, layout, { responsive: true, displayModeBar: false });
+
+      // Добавляем обработчик клика
+      mapDiv.on('plotly_click', function(data) {
+        const point = data.points[0];
+        if (point && point.location) {
+          const iso = point.location;
+          // Безопасно читаем словарь, переданный из Django
+          const isoCodes = JSON.parse(document.getElementById('iso-codes-data').textContent);
+          let countryName = null;
+          for (const [ru, code] of Object.entries(isoCodes)) {
+            if (code === iso) { countryName = ru; break; }
+          }
+          if (countryName) {
+            const amountInput = document.getElementById('amount');
+            const amountVal = amountInput ? amountInput.value : '';
+            window.location.href = `?country=${encodeURIComponent(countryName)}&amount=${encodeURIComponent(amountVal)}`;
+          }
+        }
+      });
+
     } catch (err) { console.error('Ошибка карты:', err); }
   }
 
   document.addEventListener('DOMContentLoaded', () => {
+    // Запуск графиков
     const amountInput = document.getElementById('amount');
     const amt = amountInput ? amountInput.dataset.amount : 1000;
     drawCompare(amt);
@@ -321,43 +380,47 @@
     drawTop();
     drawMap();
 
+    // Живой поиск
     const input = document.getElementById('country');
     const suggestions = document.getElementById('suggestions');
     let timeout = null;
 
-    input.addEventListener('input', () => {
-      clearTimeout(timeout);
-      const val = input.value.trim();
-      if (val.length < 2) { suggestions.classList.remove('active'); return; }
+    if (input && suggestions) {
+      input.addEventListener('input', () => {
+        clearTimeout(timeout);
+        const val = input.value.trim();
+        if (val.length < 2) { suggestions.classList.remove('active'); return; }
 
-      timeout = setTimeout(async () => {
-        try {
-          const res = await fetch(`/api/search/?q=${encodeURIComponent(val)}`);
-          const data = await res.json();
-          if (data.length === 0) { suggestions.classList.remove('active'); return; }
-          suggestions.innerHTML = data.map(item => `
-            <div class="suggestion-item" onclick="selectCountry('${item.ru}')">
-              <div><span class="s-ru">${item.ru}</span><span class="s-en">${item.en}</span></div>
-              <span class="s-rate">${item.rate_str}</span>
-            </div>
-          `).join('');
-          suggestions.classList.add('active');
-        } catch (err) { console.error(err); }
-      }, 250);
-    });
+        timeout = setTimeout(async () => {
+          try {
+            const res = await fetch(`/api/search/?q=${encodeURIComponent(val)}`);
+            const data = await res.json();
+            if (data.length === 0) { suggestions.classList.remove('active'); return; }
+            suggestions.innerHTML = data.map(item => `
+              <div class="suggestion-item" onclick="selectCountry('${item.ru}')">
+                <div><span class="s-ru">${item.ru}</span><span class="s-en">${item.en}</span></div>
+                <span class="s-rate">${item.rate_str}</span>
+              </div>
+            `).join('');
+            suggestions.classList.add('active');
+          } catch (err) { console.error("Ошибка поиска:", err); }
+        }, 250);
+      });
 
-    document.addEventListener('click', (e) => {
-      if (!input.contains(e.target) && !suggestions.contains(e.target)) {
+      document.addEventListener('click', (e) => {
+        if (!input.contains(e.target) && !suggestions.contains(e.target)) {
+          suggestions.classList.remove('active');
+        }
+      });
+
+      window.selectCountry = (name) => {
+        input.value = name;
         suggestions.classList.remove('active');
-      }
-    });
-
-    window.selectCountry = (name) => {
-      input.value = name;
-      suggestions.classList.remove('active');
-      input.form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-    };
+        input.form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+      };
+    }
   });
 </script>
+{{ iso_codes|json_script:"iso-codes-data" }}
 </body>
 </html>

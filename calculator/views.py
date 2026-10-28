@@ -3,7 +3,7 @@ from django.http import JsonResponse
 from django.db.models import Q
 from collections import Counter
 from .models import Country, CalculationHistory
-from .vat_data import find as find_in_file, parse_amount, calc, fmt_rate_full
+from .vat_data import find as find_in_file, parse_amount, calc, fmt_rate_full, ISO_CODES
 
 def index(request):
     query = request.GET.get('country', '').strip()
@@ -49,7 +49,8 @@ def index(request):
     return render(request, 'index.html', {
         "query": query, "amount_raw": amount_raw,
         "result": result, "error": error, "ambiguous": ambiguous,
-        "all_countries": all_countries
+        "all_countries": all_countries,
+        "iso_codes": ISO_CODES  # <--- Передаем для JS
     })
 
 def api_search(request):
